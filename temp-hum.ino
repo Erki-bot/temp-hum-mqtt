@@ -1,11 +1,13 @@
 #include <Adafruit_Sensor.h>
 #include <DHT.h>
 #include <DHT_U.h>
-#include <ESP8266WiFi.h>
+// #include <ESP8266WiFi.h>
+#include <WiFi.h>
 #include <PubSubClient.h>
 #include <Wire.h>
 #include <string>
-#define DHTPIN 2  // Digital pin connected to the DHT sensor
+#define DHTPIN 4  // Digital pin connected to the DHT sensor
+#define GAS_SENSOR_PIN 35
 // Feather HUZZAH ESP8266 note: use pins 3, 4, 5, 12, 13 or 14 --
 // Pin 15 can work but DHT must be disconnected during program upload.
 
@@ -18,13 +20,22 @@
 //   https://learn.adafruit.com/dht/overview
 
 DHT_Unified dht(DHTPIN, DHTTYPE);
-const char* ssid = "Moov Africa_2.4G_0D360";
-const char* password = "64949961";
-const char* mqtt_server = "192.168.1.101";
+
+// const char* ssid = "Moov Africa_2.4G_0D360";
+// const char* password = "64949961";
+// const char* mqtt_server = "192.168.1.105";
+
+const char* ssid = "AGBO1";
+const char* password = "ossenou1";
+const char* mqtt_server = "192.168.43.205";
 
 // const char* ssid = "RightNetwork.";
 // const char* password = "#80b42C8q@9vhqJHb5XtX1";
 // const char* mqtt_server = "192.168.87.38";
+
+// const char* ssid = "RightNetwork";
+// const char* password = "#80b42C8q@9vhqJHb5XtX1";
+// const char* mqtt_server = "192.168.86.130";
 
 // const char* ssid = "theSPACE";
 // const char* password = "thespaceNGO4040";
@@ -84,6 +95,7 @@ void setup() {
   Serial.println(F("------------------------------------"));
   // Set delay between sensor readings based on sensor details.
   delayMS = sensor.min_delay / 1000;
+  pinMode(GAS_SENSOR_PIN,INPUT);
 }
 
 void setup_wifi() {
@@ -139,7 +151,8 @@ void reconnect() {
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
     // Attempt to connect
-    if (client.connect("ESP8266Client")) {
+  //  boolean connect(const char* id, const char* willTopic, uint8_t willQos, boolean willRetain, const char* willMessage);
+    if (client.connect("project1","status/esp2",1,true,"off")) {
       Serial.println("connected");
       // Subscribe
       client.subscribe("esp32/output");
@@ -151,6 +164,7 @@ void reconnect() {
       delay(5000);
     }
   }
+  client.publish("status/esp1","on",true);
 }
 
 void readDHT() {
@@ -163,7 +177,7 @@ void readDHT() {
     Serial.print(F("Temperature: "));
     Serial.print(event.temperature);
     Serial.println(F("°C"));
-    publishJsonMqtt("home/temp", "temperature", String(event.temperature));
+    publishStringMqtt("home/temp", String(event.temperature));
   }
   // Get humidity event and print its value.
   dht.humidity().getEvent(&event);
@@ -173,10 +187,17 @@ void readDHT() {
     Serial.print(F("Humidity: "));
     Serial.print(event.relative_humidity);
     Serial.println(F("%"));
-    publishJsonMqtt("home/hum", "humidity", String(event.relative_humidity));
+    publishStringMqtt("home/hum", String(event.relative_humidity));
   }
 }
 
+void readGas(){
+  int val = analogRead(GAS_SENSOR_PIN);
+  float gas = (val/4095.0)*100;
+  Serial.print("Gas : ====> ");
+  Serial.println(gas);
+  publishStringMqtt("home/gas",String (gas));
+}
 void publishJsonMqtt(String topic, String key, String value) {
   String d;
 
@@ -206,7 +227,28 @@ void publishJsonMqtt(String topic, String key, String value) {
     Serial.println('Sent');
   }
 }
-
+void publishStringMqtt(String topic, String data) {
+ 
+  char datas[data.length() + 1];
+  char tp[topic.length() + 1];
+  data.toCharArray(datas, sizeof(datas));
+  topic.toCharArray(tp, sizeof(tp));
+  Serial.println(datas);
+  if (!client.publish(tp, datas, true)) {
+    Serial.println("Failled to publish");
+    Serial.println("Retrying");
+    if (!client.connected()) {
+      reconnect();
+    }
+    while (!client.publish(tp, datas, true)) {
+      Serial.print('.');
+      client.publish(tp, datas, true);
+      Serial.println("");
+      delay(500);
+    }
+    Serial.println('Sent');
+  }
+}
 void loop() {
   if (!client.connected()) {
     reconnect();
@@ -215,4 +257,5 @@ void loop() {
   // Delay between measurements.
   delay(delayMS);
   readDHT();
+  readGas();
 }
